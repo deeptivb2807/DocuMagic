@@ -2,9 +2,18 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from typing import Optional
+import os
+from dotenv import load_dotenv
 
-# IMPORTANT: replace this with a strong secret and keep it secret (store in .env in production)
-SECRET_KEY = "change_this_to_a_random_secure_value"
+# Load the .env file
+load_dotenv()
+
+# Read SECRET_KEY from environment variable
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY is not set. Please define it in your .env file.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

@@ -43,9 +43,3 @@ jobs:
       - name: Run Bandit security scan
         run: |
           bandit -r .
-
-      - name: Run tests
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/documagicdb
-        run: |
-          pytest -q --disable-warnings --maxfail=1

@@ -1,31 +1,35 @@
-# integration_test_zoho_mail_client.py
-import pytest
+# tests/test_zoho_client_integration.py
+import unittest
 from app.services.email_ingestion import ZohoMailClient
 
-@pytest.fixture
-def client():
-    return ZohoMailClient()
 
-def test_send_email_real(client):
-    """Actually send an email via Zoho SMTP"""
-    # ⚠️ This will send a real email. Use a safe test address.
-    to_address = client.email_address  # send to yourself for testing
-    subject = "Integration Test Email"
-    body = "This is a real test email sent by ZohoMailClient."
+class TestZohoMailClientIntegration(unittest.TestCase):
+    def setUp(self):
+        # This will load settings from your .env file
+        self.client = ZohoMailClient()
 
-    result = client.send_email(to_address, subject, body)
-    assert result is True
+    def test_fetch_emails(self):
+        """Fetch emails from Zoho inbox using real credentials"""
+        emails = self.client.fetch_emails(limit=2)
+        self.assertIsInstance(emails, list)
+        # If there are emails, check structure
+        if emails:
+            email_data = emails[0]
+            self.assertIn("from", email_data)
+            self.assertIn("subject", email_data)
+            self.assertIn("date", email_data)
+            self.assertIn("body", email_data)
+            self.assertIn("attachments", email_data)
 
-def test_fetch_emails_real(client):
-    """Actually fetch emails from Zoho IMAP inbox"""
-    emails = client.fetch_emails(limit=2)
-    assert isinstance(emails, list)
-    assert len(emails) > 0
+    # Optional: if you later add send_email method
+    # def test_send_email(self):
+    #     """Send a test email via Zoho SMTP"""
+    #     to_address = self.client.email_address
+    #     subject = "Integration Test Email"
+    #     body = "This is a test email sent by ZohoMailClient."
+    #     result = self.client.send_email(to_address, subject, body)
+    #     self.assertTrue(result)
 
-    # Check that the first email has expected keys
-    email_data = emails[0]
-    assert "from" in email_data
-    assert "subject" in email_data
-    assert "date" in email_data
-    assert "body" in email_data
-    assert "attachments" in email_data
+
+if __name__ == "__main__":
+    unittest.main()

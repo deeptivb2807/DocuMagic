@@ -4,6 +4,8 @@ import smtplib
 import email
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from app.models.document import Document  # adjust path if needed
 
 load_dotenv()
 
@@ -17,26 +19,13 @@ class ZohoMailClient:
         self.email_address = os.getenv("EMAIL_ADDRESS")
         self.email_password = os.getenv("EMAIL_PASSWORD")
 
-    def fetch_emails(self, limit=5):
-        """Fetch recent emails from Zoho Mail inbox, including attachments"""
+    def fetch_emails(self, limit=5, db: Session = None, owner_id: int = None):
+        """Fetch recent emails from Zoho Mail inbox, store only filename + file_type in DB"""
         try:
             mail = imaplib.IMAP4_SSL(self.imap_host, self.imap_port)
             mail.login(self.email_address, self.email_password)
 
-            # List folders to detect the correct inbox name
-            status, folders = mail.list()
-            inbox_name = None
-            for f in folders:
-                f_decoded = f.decode()
-                if "INBOX" in f_decoded.upper():
-                    inbox_name = "INBOX"
-                    break
-
-            if not inbox_name:
-                inbox_name = "INBOX"  # fallback
-
-            mail.select(inbox_name)
-
+            mail.select("INBOX")
             status, messages = mail.search(None, "ALL")
             email_ids = messages[0].split()
 
@@ -46,37 +35,53 @@ class ZohoMailClient:
                 raw_email = msg_data[0][1]
                 msg = email.message_from_bytes(raw_email)
 
-                # Extract plain text body if available
                 body = None
                 attachments = []
                 if msg.is_multipart():
                     for part in msg.walk():
                         content_type = part.get_content_type()
-                        content_disposition = str(part.get("Content-Disposition"))
+                        content_disposition = str(part.get("Content-Disposition") or "")
 
-                        # Plain text body
+                        # Extract plain text body
                         if content_type == "text/plain" and "attachment" not in content_disposition:
-                            body = part.get_payload(decode=True).decode(errors="ignore")
+                            try:
+                                body = part.get_payload(decode=True).decode(errors="ignore")
+                            except Exception:
+                                body = None
 
-                        # Attachments
+                        # Extract attachments
                         if "attachment" in content_disposition:
                             filename = part.get_filename()
                             if filename:
-                                file_data = part.get_payload(decode=True)
-
-                                # ✅ Save file to disk
-                                os.makedirs("uploads", exist_ok=True)
-                                file_path = os.path.join("uploads", filename)
-                                with open(file_path, "wb") as f:
-                                    f.write(file_data)
+                                # derive file type from extension
+                                file_type = os.path.splitext(filename)[1].replace(".", "").lower()
 
                                 attachments.append({
                                     "filename": filename,
-                                    "size": len(file_data) if file_data else 0,
-                                    "path": file_path
+                                    "file_type": file_type
                                 })
+
+                                # Store directly in DB (only filename + file_type)
+                                if db and owner_id:
+                                    try:
+                                        doc = Document(
+                                            filename=filename,
+                                            file_type=file_type,
+                                            owner_id=owner_id
+                                        )
+                                        db.add(doc)
+                                        db.commit()
+                                        db.refresh(doc)
+                                        print(f"Inserted document {doc.id}: {filename} ({file_type})")
+                                    except Exception as e:
+                                        db.rollback()
+                                        print(f"DB insert failed for {filename}: {e}")
+
                 else:
-                    body = msg.get_payload(decode=True).decode(errors="ignore")
+                    try:
+                        body = msg.get_payload(decode=True).decode(errors="ignore")
+                    except Exception:
+                        body = None
 
                 results.append({
                     "from": msg.get("From"),
@@ -92,22 +97,3 @@ class ZohoMailClient:
         except Exception as e:
             print("Zoho Mail fetch failed:", e)
             return []
-
-    def send_email(self, to_address, subject, body):
-        """Send an email via Zoho SMTP"""
-        try:
-            msg = MIMEText(body)
-            msg["From"] = self.email_address
-            msg["To"] = to_address
-            msg["Subject"] = subject
-
-            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
-                server.login(self.email_address, self.email_password)
-                server.sendmail(self.email_address, [to_address], msg.as_string())
-
-            print("Email sent successfully to", to_address)
-            return True
-
-        except Exception as e:
-            print("Zoho Mail send failed:", e)
-            return False

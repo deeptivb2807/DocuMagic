@@ -1,22 +1,22 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.database import SessionLocal
 from app.services.email_ingestion import ZohoMailClient
 
 router = APIRouter()
 
-@router.get("/emails")
-def get_emails(limit: int = 5):
-    """
-    Fetch recent emails from Zoho Mail inbox.
-    """
-    zoho_client = ZohoMailClient()
-    emails = zoho_client.fetch_emails(limit=limit)
-    return {"emails": emails}
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-@router.post("/send-email")
-def send_email(to: str, subject: str, body: str):
+@router.get("/emails")
+def get_emails(limit: int = 5, owner_id: int = 1, db: Session = Depends(get_db)):
     """
-    Send an email via Zoho Mail SMTP.
+    Fetch recent emails from Zoho Mail inbox and store attachments in DB.
     """
     zoho_client = ZohoMailClient()
-    zoho_client.send_email(to_address=to, subject=subject, body=body)
-    return {"status": f"Email sent to {to}"}
+    emails = zoho_client.fetch_emails(limit=limit, db=db, owner_id=owner_id)
+    return {"emails": emails}
